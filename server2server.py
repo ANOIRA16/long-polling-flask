@@ -1,46 +1,53 @@
-from flask import Flask, request
-from flask_restx import Api, Resource, fields
-import logging
 import requests
+import logging
 import json
-import random
+import time
+from flask import Flask
+from flask_restx import Api, Resource, fields
 
 logging.basicConfig(level=logging.INFO)
 
-app = Flask(__name__)
-api = Api(app, version='1.0', title='Server-to-Server API',
-          description='Manage updates between servers')
+app = Flask(__name__) 
+api = Api(app, version='1.0', title='S2S Server API',
+          description='Server-to-Server Communication for sending updates')
 
-# Namespace declaration
-ns = api.namespace('updates', description='Update operations')
+ns = api.namespace('/', description='Send updates')
 
-# Model for the update (for Swagger documentation)
 update_model = api.model('Update', {
-    'message': fields.String(required=True, description='Update message')
+    'message': fields.String(required=True, description='The update message')
 })
 
-# Simulated storage for updates
-updates = []
+def send_update_to_main_server():
+    main_server_url = "http://localhost:5000/update/"
+    # Example fake data update
+    fake_data = {"message": "This is a fake update sent at " + time.strftime("%Y-%m-%d %H:%M:%S")}
+    try:
+        response = requests.post(main_server_url, json=fake_data)
+        if response.status_code == 200:
+            logging.info("Successfully sent update to the main server. Data: " + json.dumps(fake_data))
+        else:
+            logging.error("Failed to send update to the main server. Status Code: " + str(response.status_code))
+    except Exception as e:
+        logging.error("Error sending update to the main server: " + str(e))
 
-@ns.route('/post-update')
-class PostUpdate(Resource):
+@ns.route('/send-update')
+class SendUpdate(Resource):
     @api.expect(update_model)
     def post(self):
-        """Post an update from Kafka"""
-        received_update = api.payload['message']
-        updates.append(received_update)
-
-        # Send a random update to the main server
-        random_update = random.choice(updates) if updates else "No updates available"
-        send_update_to_main_server(random_update)
-
-        return {"message": "Update received and sent to main server"}, 201
-
-def send_update_to_main_server(update):
-    main_server_url = "http://localhost:5000/poll"  # Replace with your main server URL
-    payload = {"message": update}
-    headers = {"Content-Type": "application/json"}
-    requests.post(main_server_url, data=json.dumps(payload), headers=headers)
+        """Trigger an update to the main server."""
+        send_update_to_main_server()
+        return {"message": "Triggered update to main server"}, 200
 
 if __name__ == '__main__':
     app.run(debug=True, port=5002)
+
+# Automatically sending updates every 30 seconds for demonstration
+# def auto_send_updates():
+#     while True:
+#         send_update_to_main_server()
+#         time.sleep(200)
+
+# Starting the automatic updates in a separate thread to avoid blocking
+# from threading import Thread
+# update_thread = Thread(target=auto_send_updates)
+# update_thread.start()

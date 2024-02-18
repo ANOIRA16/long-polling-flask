@@ -5,20 +5,20 @@ function App() {
   const [update, setUpdate] = useState('');
 
   const pollServer = () => {
-    fetch('http://localhost:5000/poll')
-      .then(response => response.json())
-      .then(data => {
-        if (data.hasUpdate) {
-          console.log(`Update received: ${data.message}`);
-          setUpdate(data.message);
-        }
-      })
-      .catch(error => console.error('Polling error:', error));
+    fetch('http://localhost:5000/update/poll')
+    .then(response => response.json())
+    .then(data => {
+      if (data.hasUpdate) {
+        console.log(`Update received: ${data.message}`);
+        setUpdate(data.message); 
+      }
+    })
+    .catch(error => console.error('Polling error:', error));
   };
 
   useEffect(() => {
-    const interval = setInterval(pollServer, 30000); // Poll every 30 seconds
-    return () => clearInterval(interval); // Cleanup on component unmount
+    const interval = setInterval(pollServer, 180000); 
+    return () => clearInterval(interval);
   }, []);
 
   return (

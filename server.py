@@ -1,54 +1,60 @@
-from flask import Flask, jsonify, request
-import time
+from flask import Flask, jsonify
+from flask_restx import Api, Resource, fields
 import logging
-from datetime import datetime, timedelta
-from retrying import retry
-from flask_swagger_ui import get_swaggerui_blueprint
+from datetime import datetime
 
-# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
+api = Api(app, version='1.0', title='NOTIFICATION Server API',
+          description='Main Server for receiving updates and serving them to clients')
 
-# Swagger configuration
-SWAGGER_URL = '/api/docs'  
-API_URL = '/static/swagger.json'  
-swagger_ui_blueprint = get_swaggerui_blueprint(
-    SWAGGER_URL,
-    API_URL,
-    config={
-        'app_name': "Notification Server API"
-    }
-)
-app.register_blueprint(swagger_ui_blueprint, url_prefix=SWAGGER_URL)
+ns = api.namespace('update', description='Update operations')
 
-# Retry decorator with exponential backoff
-@retry(wait_exponential_multiplier=1000, wait_exponential_max=10000, stop_max_delay=90000)
-def get_updates():
-    # This function is not needed since the S2S component directly updates the server
-    pass
+update_model = api.model('Update', {
+    'message': fields.String(required=True, description='The update message')
+})
 
-@app.route('/poll')
-def poll():
-    start_time = datetime.now()
-    logging.info('Received a poll request at {}'.format(start_time.strftime("%Y-%m-%d %H:%M:%S")))
-    time.sleep(1)  
+table_state = {"message": "Initial state", "hasUpdate": False}
 
-    while (datetime.now() - start_time).total_seconds() < 120:
-        try:
-            # Simulate checking for updates from the S2S component
-            # This is where you would handle the updates directly without making a request
-            has_update = False  # Set to True if there is an update, otherwise set to False
-            message = "Update from S2S component" if has_update else "No updates."
+@ns.route('/')
+class Update(Resource):
+    @api.doc(responses={200: 'UPDATE SEND SUCCESS', 408: 'TIMEOUT, NO UPDATE'}, description="Post an update to the main notification server")
+    @api.expect(update_model)
+    def post(self):
+        """Receives an update from S2S and updates the table state."""
+        global table_state
+        table_state['message'] = api.payload['message']
+        
+        table_state['hasUpdate'] = False
+        
+        logging.info(f"Table updated with: {table_state['message']}")
+        return {"message": "Table updated successfully"}, 200
 
-            # logging.info('Sending response: {}'.format(message))
-            logging.warning('Timeout reached. No updates received in 90 seconds.')
-            
-            return jsonify({"hasUpdate": has_update, "message": message})
-        except Exception as e:
-            logging.error('Error: {}'.format(e))
-            time.sleep(10)  #wait before resending
+@ns.route('/poll')
+class Poll(Resource):
+    @api.doc(description="Long polls for updates to the table")
+    def get(self):
+        """Long polls for updates and returns them to the client."""
+        start_time = datetime.now()
+        logging.info(f'Received a poll request at {start_time.strftime("%Y-%m-%d %H:%M:%S")}')
+        
+        # Simulate the waiting period for demonstration purposes
+        wait_time_seconds = 180  # Define your wait time (180 seconds as per your setup)
+        while (datetime.now() - start_time).total_seconds() < wait_time_seconds:
+            if table_state["hasUpdate"]:
+                # If somehow hasUpdate becomes True, prepare to break the loop
+                break
+            # Implement a sleep here if you're checking for updates in a loop to avoid high CPU usage
+            # Example: time.sleep(1)
+        
+        logging.info(f'Responding to poll request at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} after waiting or due to an update.')
 
-    return jsonify({"hasUpdate": False, "message": "Timeout reached. No updates received in 90 seconds."})
+        # Reset the hasUpdate flag and respond to the poll request
+        response = jsonify({"hasUpdate": table_state["hasUpdate"], "message": table_state["message"]})
+        table_state["hasUpdate"] = False  # Consider if this is the behavior you want
+        return response
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
